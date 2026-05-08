@@ -85,6 +85,7 @@ Konkurrentsjekken fanger opp både direkte orgnr-treff, datterselskaper (via ove
 ### 3. Berikelse (`enricher.py`)
 For hvert selskap som passerer filtreringen hentes:
 - **Daglig leder** — fra `/roller`-endepunktet i Enhetsregisteret
+- **Regnskapstall** — fra Regnskapsregisteret (`data.brreg.no/regnskapsregisteret`): omsetning, driftsresultat og egenkapital for siste tilgjengelige år, oppgitt i MNOK
 - **Nettside** — først fra Enhetsregisteret. Har Brreg ingen nettside, søkes det automatisk i DuckDuckGo (kun med `--med-nettside`). Se under.
 - **E-post og telefon** — ved å skrape selskapets nettside (hoved + /kontakt, /contact, /om-oss). Kun med `--med-nettside`.
 
@@ -119,6 +120,10 @@ Lager en Excel-fil i `output/`-mappen med to ark:
 | Daglig leder | Brreg roller-API |
 | E-post, Telefon | Nettside-scraping (`--med-nettside`) |
 | Overordnet enhet | Enhetsregisteret |
+| Omsetning (MNOK) | Regnskapsregisteret |
+| Driftsresultat (MNOK) | Regnskapsregisteret |
+| Egenkapital (MNOK) | Regnskapsregisteret |
+| Regnskapsår | Regnskapsregisteret |
 
 **Statistikk** — filtreringsrapport med antall fjernet per steg.
 
@@ -180,4 +185,5 @@ serit-scraper/
 ## Datakilder
 
 - **Enhetsregisteret** (data.brreg.no): Selskapsdata, NACE-koder, adresse, overordnet enhet, roller
+- **Regnskapsregisteret** (data.brreg.no/regnskapsregisteret): Omsetning, driftsresultat og egenkapital
 - **Selskapenes nettsider**: E-post og telefon (valgfritt, kan ta tid)

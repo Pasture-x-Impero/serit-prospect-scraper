@@ -14,12 +14,12 @@ from config import (
     KONKURRENT_NØKKELORD,
     IRRELEVANTE_NØKKELORD,
     SERIT_ORGNR,
-    TILLATTE_ORGFORMER,
     MIN_ANSATTE,
-    EKSKLUDER_AVVIKLEDE,
+    MAX_ANSATTE,
     NACE_KODER,
     INKLUDER_UTVIDEDE_KODER,
     UTVIDEDE_NACE_KODER,
+    FYLKER,
 )
 
 logger = logging.getLogger(__name__)
@@ -90,40 +90,28 @@ def er_irrelevant(enhet: dict) -> bool:
     )
 
 
-def oppfyller_orgform(enhet: dict) -> bool:
-    """Sjekk om selskapet har en tillatt organisasjonsform."""
-    if not TILLATTE_ORGFORMER:
-        return True
-    orgform = enhet.get("organisasjonsform", {}).get("kode", "")
-    return orgform in TILLATTE_ORGFORMER
-
-
 def oppfyller_ansattkrav(enhet: dict) -> bool:
     """Sjekk om selskapet har tilstrekkelig antall ansatte."""
-    if MIN_ANSATTE <= 0:
-        return True
     ansatte = enhet.get("antallAnsatte", 0)
-    return ansatte >= MIN_ANSATTE
-
-
-def er_aktiv(enhet: dict) -> bool:
-    """Sjekk om selskapet er aktivt (ikke under avvikling/konkurs)."""
-    if not EKSKLUDER_AVVIKLEDE:
-        return True
-    return (
-        not enhet.get("konkurs", False)
-        and not enhet.get("underAvvikling", False)
-        and not enhet.get("underTvangsavviklingEllerTvangsopplosning", False)
-    )
+    if MIN_ANSATTE > 0 and ansatte < MIN_ANSATTE:
+        return False
+    if MAX_ANSATTE > 0 and ansatte > MAX_ANSATTE:
+        return False
+    return True
 
 
 def _ekskluder(ekskluderte: list, enhet: dict, grunn: str, detalj: str = ""):
+    adresse = enhet.get("forretningsadresse", {}) or enhet.get("postadresse", {}) or {}
+    kommnr = (adresse.get("kommunenummer", "") or "")
+    fylkesnr = kommnr[:2]
     ekskluderte.append({
         "organisasjonsnummer": enhet.get("organisasjonsnummer", ""),
         "navn": enhet.get("navn", ""),
         "antall_ansatte": enhet.get("antallAnsatte", 0),
         "grunn": grunn,
         "detalj": detalj,
+        "fylkesnummer": fylkesnr,
+        "fylke": FYLKER.get(fylkesnr, ""),
     })
 
 
@@ -142,7 +130,7 @@ def _konkurrent_detalj(enhet: dict, konkurrent_orgnr_set: set) -> str:
     return ""
 
 
-def filtrer_enheter(enheter: list[dict]) -> tuple:
+def filtrer_enheter(enheter: list[dict], manuelt_ekskluderte: set = None) -> tuple:
     """
     Kjør alle filtre på en liste med enheter.
 
@@ -156,16 +144,18 @@ def filtrer_enheter(enheter: list[dict]) -> tuple:
     if INKLUDER_UTVIDEDE_KODER:
         gyldige_nace.update(UTVIDEDE_NACE_KODER)
 
+    manuelt_ekskluderte_norm = {normaliser_orgnr(o) for o in (manuelt_ekskluderte or set())}
+
     statistikk = {
         "totalt_inn": len(enheter),
-        "fjernet_feil_nace": 0,
-        "fjernet_konkurrent": 0,
-        "fjernet_serit": 0,
-        "fjernet_irrelevant": 0,
-        "fjernet_orgform": 0,
-        "fjernet_ansatte": 0,
-        "fjernet_inaktiv": 0,
         "fjernet_duplikat": 0,
+        "fjernet_manuelt": 0,
+        "fjernet_serit": 0,
+        "fjernet_konkurrent": 0,
+        "fjernet_feil_nace": 0,
+        "fjernet_for_fa_ansatte": 0,
+        "fjernet_for_mange_ansatte": 0,
+        "fjernet_irrelevant": 0,
     }
 
     filtrert = []
@@ -181,26 +171,14 @@ def filtrer_enheter(enheter: list[dict]) -> tuple:
         sett_orgnr.add(orgnr)
 
         primær_nace = enhet.get("naeringskode1", {}).get("kode", "")
-        if primær_nace not in gyldige_nace:
-            statistikk["fjernet_feil_nace"] += 1
-            _ekskluder(ekskluderte, enhet, "Feil primær NACE", f"Primærkode: {primær_nace}")
+
+        if orgnr in manuelt_ekskluderte_norm:
+            statistikk["fjernet_manuelt"] += 1
             continue
 
-        if not er_aktiv(enhet):
-            statistikk["fjernet_inaktiv"] += 1
-            _ekskluder(ekskluderte, enhet, "Inaktiv", "Under avvikling, konkurs eller tvangsoppløsning")
-            continue
-
-        if not oppfyller_orgform(enhet):
-            statistikk["fjernet_orgform"] += 1
-            orgform = enhet.get("organisasjonsform", {}).get("kode", "?")
-            _ekskluder(ekskluderte, enhet, "Organisasjonsform", f"Orgform: {orgform}")
-            continue
-
-        if not oppfyller_ansattkrav(enhet):
-            statistikk["fjernet_ansatte"] += 1
-            ansatte = enhet.get("antallAnsatte", 0)
-            _ekskluder(ekskluderte, enhet, "For få ansatte", f"{ansatte} ansatte (min. {MIN_ANSATTE})")
+        if er_serit(enhet):
+            statistikk["fjernet_serit"] += 1
+            _ekskluder(ekskluderte, enhet, "Serit-selskap", "")
             continue
 
         if er_konkurrent(enhet, konkurrent_orgnr_set):
@@ -210,9 +188,19 @@ def filtrer_enheter(enheter: list[dict]) -> tuple:
             _ekskluder(ekskluderte, enhet, "Konkurrent", detalj)
             continue
 
-        if er_serit(enhet):
-            statistikk["fjernet_serit"] += 1
-            _ekskluder(ekskluderte, enhet, "Serit-selskap", "")
+        if primær_nace not in gyldige_nace:
+            statistikk["fjernet_feil_nace"] += 1
+            _ekskluder(ekskluderte, enhet, "Feil primær NACE", f"Primærkode: {primær_nace}")
+            continue
+
+        if not oppfyller_ansattkrav(enhet):
+            ansatte = enhet.get("antallAnsatte", 0)
+            if MAX_ANSATTE > 0 and ansatte > MAX_ANSATTE:
+                statistikk["fjernet_for_mange_ansatte"] += 1
+                _ekskluder(ekskluderte, enhet, "For mange ansatte", f"{ansatte} ansatte (maks. {MAX_ANSATTE})")
+            else:
+                statistikk["fjernet_for_fa_ansatte"] += 1
+                _ekskluder(ekskluderte, enhet, "For få ansatte", f"{ansatte} ansatte (min. {MIN_ANSATTE})")
             continue
 
         if er_irrelevant(enhet):
@@ -220,7 +208,7 @@ def filtrer_enheter(enheter: list[dict]) -> tuple:
             navn = enhet.get("navn", "").lower()
             treff = next((k for k in IRRELEVANTE_NØKKELORD
                           if re.search(r'\b' + re.escape(k.lower()) + r'\b', navn)), "")
-            _ekskluder(ekskluderte, enhet, "Irrelevant", f"Nøkkelord i navn: «{treff}»")
+            _ekskluder(ekskluderte, enhet, "Irrelevant nøkkelord", f"Nøkkelord i navn: «{treff}»")
             continue
 
         filtrert.append(enhet)

@@ -321,7 +321,6 @@ class Enricher:
             "daglig_leder": None,
             "epost": epost_brreg,
             "telefon": telefon_brreg,
-            "overordnet_enhet": self._format_morselskap(enhet.get("overordnetEnhet")),
         }
 
         # Hent daglig leder

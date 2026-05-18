@@ -17,7 +17,7 @@ Resultater lagres i output/-mappen som Excel-filer.
 import argparse
 import logging
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 from config import (
     NACE_KODER,
@@ -27,11 +27,13 @@ from config import (
     PILOT_FYLKE,
     TILLATTE_ORGFORMER,
     MIN_ANSATTE,
+    MAX_OMSETNING,
 )
 from brreg_client import BrregClient
 from filter import filtrer_enheter
 from enricher import Enricher
 from exporter import eksporter_til_excel
+from supabase_client import SupabaseClient
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,7 +43,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def hent_og_filtrer(client: BrregClient, fylkesnummer: str) -> tuple:
+def hent_og_filtrer(client: BrregClient, fylkesnummer: str, manuelt_ekskluderte: set = None) -> tuple:
     fylke_navn = FYLKER.get(fylkesnummer, fylkesnummer)
     logger.info(f"=== Starter kartlegging for {fylke_navn} (fylke {fylkesnummer}) ===")
 
@@ -73,7 +75,7 @@ def hent_og_filtrer(client: BrregClient, fylkesnummer: str) -> tuple:
     logger.info(f"Totalt hentet: {len(alle_enheter)} enheter (inkl. mulige duplikater)")
 
     logger.info("Filtrerer...")
-    filtrert, ekskluderte, statistikk = filtrer_enheter(alle_enheter)
+    filtrert, ekskluderte, statistikk = filtrer_enheter(alle_enheter, manuelt_ekskluderte=manuelt_ekskluderte)
 
     logger.info(f"Etter filtrering: {len(filtrert)} kandidater")
     for nøkkel, verdi in statistikk.items():
@@ -83,19 +85,12 @@ def hent_og_filtrer(client: BrregClient, fylkesnummer: str) -> tuple:
     return filtrert, ekskluderte, statistikk
 
 
-def bygg_rad(enhet: dict, daglig_leder: str = "", enricher: Enricher = None, regnskap: dict = None) -> dict:
+def bygg_rad(enhet: dict, daglig_leder: str = "", regnskap: dict = None) -> dict:
     """Bygg én resultatrad fra rådata."""
     naeringskode = enhet.get("naeringskode1", {})
     adresse_data = enhet.get("forretningsadresse", {}) or enhet.get("postadresse", {})
     adresse_deler = adresse_data.get("adresse", [])
-    overordnet_orgnr = enhet.get("overordnetEnhet", "")
-
-    if enricher and overordnet_orgnr:
-        overordnet = enricher._format_morselskap(overordnet_orgnr)
-    elif overordnet_orgnr:
-        overordnet = str(overordnet_orgnr)
-    else:
-        overordnet = ""
+    kommnr = (adresse_data.get("kommunenummer", "") or "")
 
     return {
         "organisasjonsnummer": enhet.get("organisasjonsnummer", ""),
@@ -108,13 +103,13 @@ def bygg_rad(enhet: dict, daglig_leder: str = "", enricher: Enricher = None, reg
         "adresse": ", ".join(adresse_deler) if adresse_deler else "",
         "postnummer": adresse_data.get("postnummer", ""),
         "poststed": adresse_data.get("poststed", ""),
-        "fylke": FYLKER.get((adresse_data.get("kommunenummer", "") or "")[:2], ""),
+        "fylke": FYLKER.get(kommnr[:2], ""),
+        "fylkesnummer": kommnr[:2],
         "nettside": enhet.get("hjemmeside", ""),
         "nettside_kilde": "Brreg" if enhet.get("hjemmeside") else "",
         "daglig_leder": daglig_leder,
         "epost": enhet.get("epostadresse", ""),
         "telefon": enhet.get("telefon", ""),
-        "overordnet_enhet": overordnet,
         "omsetning": regnskap.get("omsetning") if regnskap else None,
         "driftsresultat": regnskap.get("driftsresultat") if regnskap else None,
         "egenkapital": regnskap.get("egenkapital") if regnskap else None,
@@ -126,9 +121,10 @@ def kjør_for_fylke(
     client: BrregClient,
     fylkesnummer: str,
     med_nettside: bool = False,
+    manuelt_ekskluderte: set = None,
 ) -> tuple:
     """Kjør full pipeline for ett fylke. Returnerer (berikede, ekskluderte, statistikk)."""
-    filtrert, ekskluderte, statistikk = hent_og_filtrer(client, fylkesnummer)
+    filtrert, ekskluderte, statistikk = hent_og_filtrer(client, fylkesnummer, manuelt_ekskluderte)
 
     if not filtrert:
         logger.warning("Ingen kandidater funnet etter filtrering.")
@@ -147,10 +143,33 @@ def kjør_for_fylke(
             rad = bygg_rad(
                 enhet,
                 daglig_leder=enricher.hent_daglig_leder(enhet) or "",
-                enricher=enricher,
                 regnskap=enricher.hent_regnskap(orgnr),
             )
             berikede.append(rad)
+
+    # Omsetningsfilter (etter berikelse siden data hentes fra Regnskapsregisteret)
+    fjernet_omsetning = 0
+    if MAX_OMSETNING > 0:
+        godkjente = []
+        for rad in berikede:
+            omsetning = rad.get("omsetning")
+            if omsetning is not None and omsetning > MAX_OMSETNING:
+                fjernet_omsetning += 1
+                ekskluderte.append({
+                    "organisasjonsnummer": rad.get("organisasjonsnummer", ""),
+                    "navn": rad.get("navn", ""),
+                    "antall_ansatte": rad.get("antall_ansatte", 0),
+                    "grunn": "For høy omsetning",
+                    "detalj": f"{omsetning} MNOK (maks. {MAX_OMSETNING} MNOK)",
+                    "fylkesnummer": rad.get("fylkesnummer", ""),
+                    "fylke": rad.get("fylke", ""),
+                })
+            else:
+                godkjente.append(rad)
+        berikede = godkjente
+
+    statistikk["fjernet_for_stor_omsetning"] = fjernet_omsetning
+    statistikk["totalt_ut"] = len(berikede)
 
     return berikede, ekskluderte, statistikk
 
@@ -198,6 +217,11 @@ def main():
     logger.info(f"Fylker: {', '.join(f'{f} ({FYLKER[f]})' for f in fylker)}")
     logger.info(f"Tidspunkt: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
 
+    supabase = SupabaseClient()
+    manuelt_ekskluderte = supabase.hent_manuelt_ekskluderte()
+    if manuelt_ekskluderte:
+        logger.info(f"Hentet {len(manuelt_ekskluderte)} manuelt ekskluderte fra Supabase")
+
     client = BrregClient()
     alle_berikede = []
     alle_ekskluderte = []
@@ -207,6 +231,7 @@ def main():
         berikede, ekskluderte, statistikk = kjør_for_fylke(
             client, fylkesnummer,
             med_nettside=args.med_nettside,
+            manuelt_ekskluderte=manuelt_ekskluderte,
         )
         alle_berikede.extend(berikede)
         alle_ekskluderte.extend(ekskluderte)
@@ -219,6 +244,12 @@ def main():
 
     kombinert_statistikk = slå_sammen_statistikk(alle_statistikk)
     filsti = eksporter_til_excel(alle_berikede, fylke_label, kombinert_statistikk, alle_ekskluderte)
+    logger.info(f"Excel-fil lagret: {filsti}")
+
+    kjort_dato = datetime.now(timezone.utc).isoformat()
+    supabase.skriv_kandidater(alle_berikede, kjort_dato)
+    supabase.skriv_ekskluderte(alle_ekskluderte, kjort_dato)
+
     logger.info(f"=== Ferdig! Resultat lagret i: {filsti} ===")
 
 

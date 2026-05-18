@@ -1,6 +1,6 @@
 # Serit Rekrutteringsscraper
 
-Kartlegger aktuelle IT-selskap per fylke for Serit-gruppen. Henter data fra Enhetsregisteret, filtrerer bort konkurrenter og irrelevante selskap, beriker med kontaktinformasjon, og eksporterer til Excel.
+Kartlegger aktuelle IT-selskap per fylke for Serit-gruppen. Henter data fra Enhetsregisteret, filtrerer bort konkurrenter og irrelevante selskap, beriker med kontaktinformasjon, og eksporterer til Excel og Supabase.
 
 ## Komme i gang
 
@@ -10,21 +10,32 @@ Kartlegger aktuelle IT-selskap per fylke for Serit-gruppen. Henter data fra Enhe
 pip install -r requirements.txt
 ```
 
-### 2. Kjør scriptet
+### 2. Konfigurer miljøvariabler
+
+Opprett en `.env`-fil i prosjektmappen:
+
+```
+SUPABASE_URL=https://xxxx.supabase.co
+SUPABASE_KEY=din-api-nokkel
+```
+
+Uten disse kjører scraperen normalt og produserer kun Excel-output.
+
+### 3. Kjør scriptet
 
 Det finnes to modi — velg etter behov:
 
 | Modus | Kommando | Tid | Hva du får |
 |-------|----------|-----|------------|
-| Standard | `python main.py` | ~5–10 min | Alt fra Brreg inkl. daglig leder |
-| Full | `python main.py --med-nettside` | ~30–60 min | Alt over + e-post/tlf scrapt fra nettsider |
+| Standard | `python main.py` | ~5–10 min | Alt fra Brreg inkl. daglig leder og regnskap |
+| Full | `python main.py --med-nettside` | ~60–90 min | Alt over + e-post/tlf scrapt fra nettsider |
 
 **Anbefalt for vanlig bruk:**
 ```bash
 python main.py
 ```
 
-### 3. Kjør for andre fylker
+### 4. Kjør for andre fylker
 
 ```bash
 python main.py --fylke 11          # Rogaland
@@ -32,7 +43,7 @@ python main.py --fylke 11,42       # Rogaland og Agder
 python main.py --alle-fylker       # Alle fylker
 ```
 
-Fylkeskodene er offisielle koder fra SSB og brukes av alle offentlige registre i Norge. Kommunenumre starter alltid med fylkeskoden (f.eks. Oslo-kommuner starter på `03`).
+Fylkeskodene er offisielle koder fra SSB og brukes av alle offentlige registre i Norge.
 
 | Kode | Fylke |
 |------|-------|
@@ -52,7 +63,7 @@ Fylkeskodene er offisielle koder fra SSB og brukes av alle offentlige registre i
 | 55 | Troms |
 | 56 | Finnmark |
 
-### 4. Finn resultatet
+### 5. Finn resultatet
 
 Excel-filen lagres automatisk i `output/`-mappen:
 ```
@@ -60,10 +71,14 @@ output/serit_kandidater_Oslo_20260505_1403.xlsx
 ```
 Filen har tre ark: **Kandidater**, **Ekskluderte** og **Statistikk**.
 
+Data skrives også til Supabase (hvis konfigurert) — se under.
+
 ## Hva skjer under panseret?
 
 ### 1. Henting (`brreg_client.py`)
 Søker i Enhetsregisteret per NACE-kode. Siden API-et ikke lenger støtter filtrering på fylke direkte, hentes alle kommuner som tilhører fylket (basert på kommunenummer-prefiks), og det gjøres ett API-kall per kommune. Resultater pagineres automatisk og duplikater filtreres bort.
+
+API-et forhåndsfiltrerer på organisasjonsform (AS/ASA), minimum 5 ansatte og aktive selskaper.
 
 ### 2. Filtrering (`filter.py`)
 Selskaper filtreres i denne rekkefølgen:
@@ -71,22 +86,23 @@ Selskaper filtreres i denne rekkefølgen:
 | Steg | Hva fjernes |
 |------|-------------|
 | Duplikater | Samme orgnr fra flere NACE-koder |
-| Inaktive | Under avvikling, konkurs eller tvangsoppløsning |
-| Organisasjonsform | Bare AS og ASA beholdes (konfigurerbart) |
-| Ansatte | Færre enn 5 ansatte fjernes (konfigurerbart) |
-| Konkurrenter | Selskaper i `KONKURRENT_KONSERN` eller med konkurrent-nøkkelord i navn |
+| Manuelt ekskluderte | Selskaper ekskludert manuelt i Lovable-appen |
 | Serit-selskap | Egne selskaper ekskluderes |
-| Irrelevante | Selskaper med nøkkelord i `IRRELEVANTE_NØKKELORD` (tom som standard) |
+| Konkurrenter | Selskaper i `KONKURRENT_KONSERN` eller med konkurrent-nøkkelord i navn |
+| Feil primær NACE | Primærkoden er ikke én av de aktive søkekodene |
+| For mange ansatte | Over `MAX_ANSATTE` (standard: 50) |
+| For høy omsetning | Over `MAX_OMSETNING` MNOK (standard: 100) — filtreres etter berikelse |
+| Irrelevante nøkkelord | Selskaper med nøkkelord i `IRRELEVANTE_NØKKELORD` (holding, invest, kapital) |
 
 Konkurrentsjekken fanger opp både direkte orgnr-treff, datterselskaper (via overordnet enhet) og navnetreff på nøkkelord som "atea", "crayon", "capgemini" osv.
 
-> **Merk:** Brreg-API-et søker på tvers av alle registrerte NACE-koder for et selskap, ikke bare primærkoden. Et selskap med `62.200` som sekundærkode og f.eks. `09.109` (olje- og gassutvinning) som primærkode vil derfor dukke opp i søket. Filteret sjekker at primær-NACE (`naeringskode1`) er én av de aktive søkekodene — selskaper som ikke oppfyller dette, fjernes og havner i "Ekskluderte"-arket med grunn "Feil primær NACE-kode".
+> **Merk:** Brreg-API-et søker på tvers av alle registrerte NACE-koder for et selskap, ikke bare primærkoden. Et selskap med `62.200` som sekundærkode vil derfor dukke opp i søket. Filteret sjekker at primær-NACE (`naeringskode1`) er én av de aktive søkekodene — selskaper som ikke oppfyller dette, fjernes og havner i "Ekskluderte"-arket med grunn "Feil primær NACE-kode".
 
 ### 3. Berikelse (`enricher.py`)
 For hvert selskap som passerer filtreringen hentes:
 - **Daglig leder** — fra `/roller`-endepunktet i Enhetsregisteret
 - **Regnskapstall** — fra Regnskapsregisteret (`data.brreg.no/regnskapsregisteret`): omsetning, driftsresultat og egenkapital for siste tilgjengelige år, oppgitt i MNOK
-- **Nettside** — først fra Enhetsregisteret. Har Brreg ingen nettside, søkes det automatisk i DuckDuckGo (kun med `--med-nettside`). Se under.
+- **Nettside** — først fra Enhetsregisteret. Har Brreg ingen nettside, søkes det automatisk i DuckDuckGo (kun med `--med-nettside`).
 - **E-post og telefon** — ved å skrape selskapets nettside (hoved + /kontakt, /contact, /om-oss). Kun med `--med-nettside`.
 
 #### Nettside-oppslag med DuckDuckGo
@@ -101,9 +117,9 @@ Brreg-nettsider behandles aldri av DuckDuckGo — kun selskaper uten registrert 
 I Excel-filen markeres rader med DDG-funnet nettside med gul bakgrunn, og kolonnen "Nettside kilde" viser `Brreg` eller `DDG`.
 
 ### 4. Eksport (`exporter.py`)
-Lager en Excel-fil i `output/`-mappen med to ark:
+Lager en Excel-fil i `output/`-mappen med tre ark:
 
-**Kandidater** — ett selskap per rad med følgende kolonner:
+**Kandidater** — ett selskap per rad, sortert på fylke og deretter ansatte (synkende):
 
 | Kolonne | Kilde |
 |---------|-------|
@@ -116,16 +132,24 @@ Lager en Excel-fil i `output/`-mappen med to ark:
 | Stiftelsesdato | Enhetsregisteret |
 | Adresse, Postnummer, Poststed, Fylke | Enhetsregisteret |
 | Nettside | Enhetsregisteret, eller DuckDuckGo-søk som fallback (`--med-nettside`) |
-| Nettside kilde | `Brreg` eller `DDG` — viser hvor nettsiden ble funnet |
+| Nettside kilde | `Brreg` eller `DDG` |
 | Daglig leder | Brreg roller-API |
-| E-post, Telefon | Nettside-scraping (`--med-nettside`) |
-| Overordnet enhet | Enhetsregisteret |
+| E-post, Telefon | Brreg eller nettside-scraping (`--med-nettside`) |
 | Omsetning (MNOK) | Regnskapsregisteret |
 | Driftsresultat (MNOK) | Regnskapsregisteret |
 | Egenkapital (MNOK) | Regnskapsregisteret |
 | Regnskapsår | Regnskapsregisteret |
 
+**Ekskluderte** — sortert på ansatte synkende, med grunn og detalj.
+
 **Statistikk** — filtreringsrapport med antall fjernet per steg.
+
+### 5. Supabase-integrasjon (`supabase_client.py`)
+Etter kjøring skrives resultater til Supabase via REST API:
+
+- **`kandidater`** — upsert på `organisasjonsnummer`. Manuelle felter (`mobil_daglig_leder`, `notat`) overskrives aldri av scraperen.
+- **`ekskluderte`** — slettes og skrives på nytt ved hver kjøring (snapshot).
+- **`manuelt_ekskluderte`** — leses ved oppstart. Selskaper i denne tabellen filtreres bort og telles som "Manuelt ekskludert" i statistikken.
 
 ## Konfigurasjon
 
@@ -139,27 +163,25 @@ Alt konfigureres i `config.py`:
 | `KONKURRENT_KONSERN` | Orgnr til konsern som ekskluderes med datterselskaper |
 | `EKSKLUDERTE_ORGNR` | Enkeltselskaper som ekskluderes |
 | `KONKURRENT_NØKKELORD` | Nøkkelord i selskapsnavn som trigger ekskludering |
-| `IRRELEVANTE_NØKKELORD` | Ytterligere nøkkelord for ekskludering (tom som standard) |
-| `TILLATTE_ORGFORMER` | Hvilke organisasjonsformer som inkluderes |
-| `MIN_ANSATTE` | Minimum antall ansatte |
-| `EKSKLUDER_AVVIKLEDE` | Filtrer bort selskaper under avvikling |
+| `IRRELEVANTE_NØKKELORD` | Nøkkelord som ekskluderer (holding, invest, kapital) |
+| `MIN_ANSATTE` | Minimum antall ansatte (forhåndsfiltrert i API) |
+| `MAX_ANSATTE` | Maksimalt antall ansatte (standard: 50) |
+| `MAX_OMSETNING` | Maksimal omsetning i MNOK (standard: 100) |
 | `REQUEST_DELAY` | Sekunder mellom API-kall |
 
 ### NACE-koder i bruk
-
-Enhetsregisteret bruker følgende koder (oppdatert format per 2026):
 
 **Offisielle koder (alltid aktive):**
 
 | Kode | Beskrivelse |
 |------|-------------|
 | 62.200 | Konsulentvirksomhet tilknyttet IT og forvaltning og drift |
-| 46.500 | Engroshandel med IKT-utstyr |
 
 **Utvidede koder (aktiveres med `INKLUDER_UTVIDEDE_KODER = True`):**
 
 | Kode | Beskrivelse |
 |------|-------------|
+| 46.500 | Engroshandel med IKT-utstyr |
 | 62.100 | Dataprogrammeringstjenester |
 | 62.900 | Andre tjenester tilknyttet informasjonsteknologi |
 | 63.100 | Datainfrastruktur, -behandling, -lagring og tilknyttede tjenester |
@@ -172,18 +194,21 @@ Enhetsregisteret bruker følgende koder (oppdatert format per 2026):
 
 ```
 serit-scraper/
-├── main.py           # Hovedscript – kjør dette
-├── config.py         # All konfigurasjon
-├── brreg_client.py   # API-klient for Enhetsregisteret
-├── filter.py         # Filtrering og rensing
-├── enricher.py       # Berikelse med kontaktinfo
-├── exporter.py       # Excel-eksport
-├── requirements.txt  # Python-avhengigheter
-└── output/           # Genererte Excel-filer
+├── main.py              # Hovedscript – kjør dette
+├── config.py            # All konfigurasjon
+├── brreg_client.py      # API-klient for Enhetsregisteret
+├── filter.py            # Filtrering og rensing
+├── enricher.py          # Berikelse med kontaktinfo
+├── exporter.py          # Excel-eksport
+├── supabase_client.py   # Supabase-integrasjon
+├── requirements.txt     # Python-avhengigheter
+├── .env                 # Miljøvariabler (ikke i git)
+└── output/              # Genererte Excel-filer
 ```
 
 ## Datakilder
 
-- **Enhetsregisteret** (data.brreg.no): Selskapsdata, NACE-koder, adresse, overordnet enhet, roller
+- **Enhetsregisteret** (data.brreg.no): Selskapsdata, NACE-koder, adresse, roller
 - **Regnskapsregisteret** (data.brreg.no/regnskapsregisteret): Omsetning, driftsresultat og egenkapital
 - **Selskapenes nettsider**: E-post og telefon (valgfritt, kan ta tid)
+- **Supabase**: Lagring og manuell overrides via Lovable-frontend

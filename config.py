@@ -147,7 +147,6 @@ SERIT_ORGNR = [
     "930721921",  # Impero IT AS
     "985092400",  # Moveo AS
     "987493348",  # Abacus IT AS
-    
 ]
 
 # --- Filtrering ---
@@ -159,6 +158,12 @@ TILLATTE_ORGFORMER = ["AS", "ASA"]  # Aksjeselskap og Allmennaksjeselskap
 # Sett til 5 for å filtrere i API-kallet, eller 0 for å hente alle
 # og filtrere lokalt etterpå.
 MIN_ANSATTE = 5
+
+# Maksimalt antall ansatte (0 = ingen filter)
+MAX_ANSATTE = 50
+
+# Maksimal omsetning i MNOK (0 = ingen filter). Filtreres etter berikelse.
+MAX_OMSETNING = 100.0
 
 # Ekskluder selskap under avvikling/konkurs
 EKSKLUDER_AVVIKLEDE = True

@@ -34,7 +34,6 @@ KOLONNER = [
     ("Daglig leder", 25),
     ("E-post", 30),
     ("Telefon", 16),
-    ("Overordnet enhet", 18),
     ("Omsetning (MNOK)", 16),
     ("Driftsresultat (MNOK)", 20),
     ("Egenkapital (MNOK)", 18),
@@ -100,7 +99,7 @@ def eksporter_til_excel(
     # Auto-filter
     ws.auto_filter.ref = f"A1:{get_column_letter(len(KOLONNER))}1"
 
-    data = sorted(data, key=lambda x: x.get("antall_ansatte") or 0, reverse=True)
+    data = sorted(data, key=lambda x: (x.get("fylke") or "", -(x.get("antall_ansatte") or 0)))
 
     # Datarad
     felt_mapping = [
@@ -108,7 +107,7 @@ def eksporter_til_excel(
         "naeringskode", "naeringsbeskrivelse", "antall_ansatte",
         "stiftelsesdato", "adresse", "postnummer", "poststed",
         "fylke", "nettside", "nettside_kilde", "daglig_leder", "epost",
-        "telefon", "overordnet_enhet",
+        "telefon",
         "omsetning", "driftsresultat", "egenkapital", "regnskap_aar",
     ]
 
@@ -150,17 +149,19 @@ def eksporter_til_excel(
     stat_rader = [
         ("", ""),
         ("Filtreringssteg", "Antall"),
-        ("Totalt hentet fra Enhetsregisteret", statistikk.get("totalt_inn", 0)),
+        ("Totalt hentet fra Enhetsregisteret¹", statistikk.get("totalt_inn", 0)),
         ("Fjernet: Duplikater", statistikk.get("fjernet_duplikat", 0)),
-        ("Fjernet: Feil primær NACE-kode", statistikk.get("fjernet_feil_nace", 0)),
-        ("Fjernet: Inaktive/under avvikling", statistikk.get("fjernet_inaktiv", 0)),
-        ("Fjernet: Feil organisasjonsform", statistikk.get("fjernet_orgform", 0)),
-        ("Fjernet: For få ansatte", statistikk.get("fjernet_ansatte", 0)),
-        ("Fjernet: Konkurrenter", statistikk.get("fjernet_konkurrent", 0)),
         ("Fjernet: Serit-selskap", statistikk.get("fjernet_serit", 0)),
-        ("Fjernet: Irrelevante", statistikk.get("fjernet_irrelevant", 0)),
+        ("Fjernet: Konkurrenter", statistikk.get("fjernet_konkurrent", 0)),
+        ("Fjernet: Feil primær NACE-kode", statistikk.get("fjernet_feil_nace", 0)),
+        ("Fjernet: For mange ansatte (> 50)", statistikk.get("fjernet_for_mange_ansatte", 0)),
+        ("Fjernet: For høy omsetning (> 100 MNOK)", statistikk.get("fjernet_for_stor_omsetning", 0)),
+        ("Fjernet: Irrelevante nøkkelord", statistikk.get("fjernet_irrelevant", 0)),
         ("", ""),
         ("Kandidater i resultatet", statistikk.get("totalt_ut", 0)),
+        ("", ""),
+        ("¹ Forhåndsfiltrert av Brreg API: kun AS/ASA,", ""),
+        ("  min. 5 ansatte, aktive selskaper", ""),
     ]
 
     for i, (label, verdi) in enumerate(stat_rader, 5):
@@ -196,6 +197,7 @@ def eksporter_til_excel(
         ws_ekskl.freeze_panes = "A2"
         ws_ekskl.auto_filter.ref = f"A1:{get_column_letter(len(ekskl_kolonner))}1"
 
+        ekskluderte = sorted(ekskluderte, key=lambda x: x.get("antall_ansatte") or 0, reverse=True)
         for row_idx, selskap in enumerate(ekskluderte, 2):
             for col_idx, felt in enumerate(ekskl_felt, 1):
                 verdi = selskap.get(felt, "")

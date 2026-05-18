@@ -5,100 +5,99 @@
 ```
 Lovable-frontend
     ├── leser kandidater + ekskluderte fra Supabase
-    ├── skriver innstillinger til Supabase (fylke, konkurrenter, NACE-koder)
+    ├── skriver manuell_ekskluderte + overrides til Supabase
     └── trigger manuell kjøring (via GitHub Actions repository_dispatch)
                         ↑
                    Supabase
-                   ├── kandidater      (selskaper som passerte filtrering)
-                   ├── ekskluderte     (selskaper som ble filtrert bort, med grunn)
-                   └── innstillinger   (bruker-justerbare valg)
+                   ├── kandidater         (selskaper som passerte filtrering)
+                   ├── ekskluderte        (automatisk filtrert bort, snapshot per kjøring)
+                   ├── manuelt_ekskluderte (manuelt ekskludert via Lovable)
+                   └── [innstillinger]    (fremtidig)
                         ↑
 GitHub Actions (schedule + manuell trigger)
     └── python main.py
-            ├── henter innstillinger fra Supabase
+            ├── leser manuelt_ekskluderte fra Supabase
             └── skriver kandidater + ekskluderte til Supabase
 ```
 
-## Frontend-visning i Lovable
+## Status
 
-### Hoveddashboard
-- Tallkort øverst: antall kandidater, ekskluderte, sist oppdatert, fylker søkt
-- Hovedtabell: kandidater med søk, sortering og filtre på fylke, ansatte, NACE-kode
+### ✅ Fullført
 
-### Faner / seksjoner
-| Fane | Innhold |
-|------|---------|
-| Kandidater | Søkbar/filtrerbar tabell over alle godkjente selskaper |
-| Ekskluderte | Tabell med grunn og detalj — for kvalitetssikring |
-| Innstillinger | Juster fylker, konkurrenter, NACE-koder, min. ansatte |
+**Supabase-oppsett**
+- Prosjekt opprettet via Lovable
+- Tabeller opprettet: `kandidater`, `ekskluderte`, `manuelt_ekskluderte`
+- Miljøvariabler i `.env` (lokalt) og GitHub Secrets (Actions)
 
-### Datamodell i Supabase
-Begge tabeller tagges med `fylkesnummer` og `kjort_dato` slik at man kan filtrere per fylke og se når dataene sist ble oppdatert.
+**Python – Supabase-integrasjon**
+- `supabase_client.py` bruker `requests` direkte mot PostgREST (supabase-pakken er ikke kompatibel med Python 3.14)
+- Upsert av kandidater på `organisasjonsnummer` — manuelle felter (`mobil_daglig_leder`, `notat`) bevares
+- Slett + re-insert av ekskluderte ved hver kjøring
+- Leser `manuelt_ekskluderte` ved oppstart og filtrerer disse bort
 
-## Innstillinger – hva styres fra frontend vs. kode
+**Lovable-frontend**
+- Dashboard med tallkort og kandidattabell
+- Ekskluderte-fane
+- Kobling mot Supabase
 
-### Bruker-justerbart via Lovable
-| Innstilling | Frontend-komponent |
-|-------------|-------------------|
-| Fylke(r) å kjøre for | Flervalgsliste |
-| Konkurrenter (orgnr + navn) | Tabell med legg til/fjern |
-| Konkurrent-nøkkelord | Tabell med legg til/fjern |
-| Minimum ansatte | Tallfeld eller slider |
-| NACE-koder | Avkrysningsbokser (fast liste, ikke fritekst) |
+### 🔲 Gjenstår
 
-### Beholdes i kode
-| Innstilling | Grunn |
-|-------------|-------|
-| `REQUEST_DELAY`, `API_PAGE_SIZE` | Teknisk, ikke brukerrelevant |
-| `TILLATTE_ORGFORMER` | Sjelden behov for å endre |
-| `EKSKLUDER_AVVIKLEDE` | Bør alltid være på |
+**GitHub Actions**
+- Opprett workflow `.github/workflows/scrape.yml`
+- Schedule: f.eks. hver mandag morgen (`cron: '0 6 * * 1'`)
+- Støtt manuell trigger (`workflow_dispatch`)
+- Støtt `repository_dispatch` for trigger fra Lovable-frontend
+- Legg til `SUPABASE_URL` og `SUPABASE_KEY` som GitHub Secrets
 
-### NACE-koder i frontend
-Vises som avkrysningsbokser med beskrivelse — ikke fritekst.
+**Lovable — manuell redigering**
+- Ekskludering av selskaper (skriver til `manuelt_ekskluderte`)
+- Redigering av kontaktinfo: e-post, telefon, nettside
+- Legg inn mobilnummer til daglig leder (`mobil_daglig_leder`)
+- Notatfelt per selskap
+- Gjenopprett manuelt ekskluderte selskaper
 
-| Kode | Beskrivelse | Standard |
-|------|-------------|----------|
-| 62.100 | Dataprogrammeringstjenester | ✅ |
-| 62.200 | Konsulentvirksomhet tilknyttet IT og forvaltning og drift | ✅ |
-| 62.900 | Andre tjenester tilknyttet informasjonsteknologi | ✅ |
-| 63.100 | Datainfrastruktur, -behandling, -lagring og tilknyttede tjenester | ✅ |
-| 61.100 | Kabelbasert telekommunikasjon | ⬜ |
-| 61.200 | Trådløs telekommunikasjon | ⬜ |
-| 61.900 | Annen telekommunikasjon | ⬜ |
-| 95.100 | Reparasjon og vedlikehold av datamaskiner | ⬜ |
+**Lovable — innstillinger (fremtidig, lav prioritet)**
+- Juster fylker, konkurrenter, NACE-koder fra frontend
 
-## Steg
+---
 
-1. **Supabase-oppsett**
-   - Opprett prosjekt på supabase.com
-   - Lag tabell `kandidater` (kolonner + `fylkesnummer` + `kjort_dato`)
-   - Lag tabell `ekskluderte` (orgnr, navn, ansatte, grunn, detalj, fylkesnummer, kjort_dato)
-   - Lag tabell `innstillinger` (fylker, konkurrenter, nace_koder, min_ansatte)
-   - Generer `SUPABASE_URL` og `SUPABASE_KEY` (service role for Python, anon for frontend)
+## Supabase-tabeller
 
-2. **Python – hent innstillinger + skriv til Supabase**
-   - Legg til `supabase-py` i `requirements.txt`
-   - Ved oppstart: hent innstillinger fra Supabase i stedet for å lese `config.py`
-   - Etter kjøring: upsert kandidater + ekskluderte til Supabase (på orgnr + fylkesnummer)
-   - Bruk env-variabler for `SUPABASE_URL` og `SUPABASE_KEY`
+```sql
+-- Kandidater (upsert på orgnr)
+create table kandidater (
+  organisasjonsnummer text primary key,
+  navn text, organisasjonsform text, naeringskode text,
+  naeringsbeskrivelse text, antall_ansatte integer,
+  stiftelsesdato text, adresse text, postnummer text,
+  poststed text, fylke text, fylkesnummer text,
+  nettside text, nettside_kilde text, daglig_leder text,
+  epost text, telefon text,
+  mobil_daglig_leder text,  -- manuelt felt, overskrives ikke av scraper
+  omsetning float, driftsresultat float, egenkapital float,
+  regnskap_aar text,
+  notat text,               -- manuelt felt, overskrives ikke av scraper
+  kjort_dato timestamptz
+);
 
-3. **GitHub Actions**
-   - Opprett repo på GitHub
-   - Legg til workflow `.github/workflows/scrape.yml`
-   - Sett `SUPABASE_URL` og `SUPABASE_KEY` som GitHub Secrets
-   - Schedule: f.eks. hver mandag morgen (`cron: '0 6 * * 1'`)
-   - Støtt manuell trigger (`workflow_dispatch`)
-   - Støtt `repository_dispatch` for trigger fra Lovable-frontend
+-- Ekskluderte (snapshot, slettes og skrives på nytt per kjøring)
+create table ekskluderte (
+  organisasjonsnummer text primary key,
+  navn text, antall_ansatte integer,
+  grunn text, detalj text,
+  fylke text, fylkesnummer text,
+  kjort_dato timestamptz
+);
 
-4. **Lovable-frontend**
-   - Koble Lovable-prosjekt til Supabase
-   - Bygg hoveddashboard med tallkort og kandidattabell
-   - Bygg Ekskluderte-fane for kvalitetssikring
-   - Bygg innstillingsside: juster fylker, konkurrenter, NACE-koder
-   - Vurder: eksport til Excel direkte fra Lovable?
-   - Vurder: "Kjør nå"-knapp som trigger GitHub Actions?
+-- Manuelt ekskluderte (styres av Lovable)
+create table manuelt_ekskluderte (
+  organisasjonsnummer text primary key,
+  navn text, grunn text,
+  ekskludert_dato timestamptz default now()
+);
+```
 
 ## Notater
-- Upsert på `organisasjonsnummer` + `fylkesnummer` — én rad per selskap per fylke
-- `config.py` beholdes som fallback med standardverdier hvis Supabase ikke er satt opp
-- API-et filtrerer på postadresse, ikke forretningsadresse — scriptet korrigerer dette i `brreg_client.py`
+- `supabase`-pakken er ikke kompatibel med Python 3.14 (pyiceberg-dependency krever C++ build tools). Løsning: bruk `requests` direkte mot PostgREST-APIet.
+- Manuelle felter i `kandidater` (`mobil_daglig_leder`, `notat`) ekskluderes bevisst fra upsert-payloaden — PostgREST med `resolution=merge-duplicates` oppdaterer kun kolonner som er med i requesten.
+- `ekskluderte` slettes og re-insertes ved hver kjøring siden det er et snapshot. `manuelt_ekskluderte` er separat og berøres ikke.

@@ -1,0 +1,31 @@
+name: Serit Scraper
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'  # Hver mandag kl. 06:00 UTC
+  workflow_dispatch:       # Manuell trigger fra GitHub
+  repository_dispatch:     # Trigger fra Lovable-frontend
+    types: [run-scraper]
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Sjekk ut kode
+        uses: actions/checkout@v4
+
+      - name: Sett opp Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Installer avhengigheter
+        run: pip install -r requirements.txt
+
+      - name: Kjør scraper
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python main.py --alle-fylker

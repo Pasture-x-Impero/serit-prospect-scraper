@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '0 6 * * 1'  # Hver mandag kl. 06:00 UTC
   workflow_dispatch:       # Manuell trigger fra GitHub
+    inputs:
+      med_nettside:
+        description: 'Skrap nettsider for e-post og telefon (~60-90 min ekstra)'
+        type: boolean
+        default: false
   repository_dispatch:     # Trigger fra Lovable-frontend
     types: [run-scraper]
 
@@ -28,4 +33,9 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: python main.py --alle-fylker
+        run: |
+          if [ "${{ github.event.inputs.med_nettside }}" = "true" ] || [ "${{ github.event.client_payload.med_nettside }}" = "true" ]; then
+            python main.py --alle-fylker --med-nettside
+          else
+            python main.py --alle-fylker
+          fi

@@ -133,22 +133,22 @@ IRRELEVANTE_NØKKELORD = [
 ]
 
 # --- Serit-selskap (ekskluder oss selv) ---
-SERIT_ORGNR = [
-    "997843703",  # Serit AS
-    "997536533",  # Serit Holding AS
-    "980155889",  # Eltele AS
-    "983616097",  # IT Partner Harstad AS
-    "934620437",  # Binero Tromsø AS
-    "937079001",  # Binero Trondheim AS
-    "991586253",  # Itum Notodden AS
-    "914419921",  # IT Innovasjon AS
-    "990700435", # C C Solution AS
-    "998703468",  # Prodata Cloud AS
-    "930721921",  # Impero IT AS
-    "985092400",  # Moveo AS
-    "987493348",  # Abacus IT AS
-    "928178056",  # Oceanbox AS
-]
+SERIT_ORGNR = {
+    "997843703": "Serit AS",
+    "997536533": "Serit Holding AS",
+    "980155889": "Eltele AS",
+    "983616097": "IT Partner Harstad AS",
+    "934620437": "Binero Tromsø AS",
+    "937079001": "Binero Trondheim AS",
+    "991586253": "Itum Notodden AS",
+    "914419921": "IT Innovasjon AS",
+    "990700435": "C C Solution AS",
+    "998703468": "Prodata Cloud AS",
+    "930721921": "Impero IT AS",
+    "985092400": "Moveo AS",
+    "987493348": "Abacus IT AS",
+    "928178056": "Oceanbox AS",
+}
 
 # --- Filtrering ---
 # Organisasjonsformer å inkludere (tom liste = alle)

@@ -62,7 +62,7 @@ def er_konkurrent(enhet: dict, konkurrent_orgnr_set: set) -> bool:
 def er_serit(enhet: dict) -> bool:
     """Sjekk om selskapet tilhører Serit-gruppen."""
     orgnr = normaliser_orgnr(enhet.get("organisasjonsnummer", ""))
-    serit_set = {normaliser_orgnr(o) for o in SERIT_ORGNR}
+    serit_set = {normaliser_orgnr(o) for o in SERIT_ORGNR.keys()}
 
     if orgnr in serit_set:
         return True

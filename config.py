@@ -90,6 +90,8 @@ KONKURRENT_KONSERN = {
     # Webstep-konsernet
     "996394638": "Webstep ASA",
     "941612474": "Webstep AS",
+    # Iteam
+    "923456317": "Iteam AS",
 }
 
 # Eksakte organisasjonsnummer å ekskludere (enkeltselskap)

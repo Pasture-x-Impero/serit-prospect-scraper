@@ -27,7 +27,12 @@ from config import (
     PILOT_FYLKE,
     TILLATTE_ORGFORMER,
     MIN_ANSATTE,
+    MAX_ANSATTE,
     MAX_OMSETNING,
+    KONKURRENT_KONSERN,
+    KONKURRENT_NØKKELORD,
+    SERIT_ORGNR,
+    IRRELEVANTE_NØKKELORD,
 )
 from brreg_client import BrregClient
 from filter import filtrer_enheter
@@ -249,6 +254,18 @@ def main():
     kjort_dato = datetime.now(timezone.utc).isoformat()
     supabase.skriv_kandidater(alle_berikede, kjort_dato)
     supabase.skriv_ekskluderte(alle_ekskluderte, kjort_dato)
+
+    aktive_nace = list(NACE_KODER) + (list(UTVIDEDE_NACE_KODER) if INKLUDER_UTVIDEDE_KODER else [])
+    supabase.skriv_innstillinger({
+        "nace_koder": aktive_nace,
+        "min_ansatte": MIN_ANSATTE,
+        "max_ansatte": MAX_ANSATTE,
+        "max_omsetning": MAX_OMSETNING,
+        "konkurrenter": KONKURRENT_KONSERN,
+        "konkurrent_nøkkelord": KONKURRENT_NØKKELORD,
+        "serit_orgnr": SERIT_ORGNR,
+        "irrelevante_nøkkelord": IRRELEVANTE_NØKKELORD,
+    })
 
     logger.info(f"=== Ferdig! Resultat lagret i: {filsti} ===")
 

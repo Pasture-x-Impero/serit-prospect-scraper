@@ -103,6 +103,13 @@ class SupabaseClient:
                 return False
         return True
 
+    def skriv_innstillinger(self, data: dict) -> bool:
+        """Skriv gjeldende konfig til Supabase (enkeltrad, upsert på id=1)."""
+        if not self.enabled:
+            return False
+        logger.info("Skriver innstillinger til Supabase...")
+        return self._upsert_batch("innstillinger", [{"id": 1, **data}], pk="id")
+
     def _slett_alle(self, table: str) -> bool:
         try:
             r = requests.delete(

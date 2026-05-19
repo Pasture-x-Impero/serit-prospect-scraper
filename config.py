@@ -9,12 +9,12 @@ Juster innstillingene her for å tilpasse søk og filtrering.
 # Legg til/fjern koder etter behov.
 NACE_KODER = [
     "62.200",  # Konsulentvirksomhet tilknyttet IT og forvaltning og drift
+    "46.500",  # Engroshandel med IKT-utstyr
 ]
 
 # Valgfrie tilleggskoder (sett INKLUDER_UTVIDEDE_KODER = True for å bruke)
 INKLUDER_UTVIDEDE_KODER = False
 UTVIDEDE_NACE_KODER = [
-    "46.500",  # Engroshandel med IKT-utstyr
     "61.100",  # Kabelbasert telekommunikasjon
     "61.200",  # Trådløs telekommunikasjon
     "61.900",  # Annen telekommunikasjon
@@ -147,6 +147,7 @@ SERIT_ORGNR = [
     "930721921",  # Impero IT AS
     "985092400",  # Moveo AS
     "987493348",  # Abacus IT AS
+    "928178056",  # Oceanbox AS
 ]
 
 # --- Filtrering ---

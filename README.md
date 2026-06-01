@@ -176,12 +176,12 @@ Alt konfigureres i `config.py`:
 | Kode | Beskrivelse |
 |------|-------------|
 | 62.200 | Konsulentvirksomhet tilknyttet IT og forvaltning og drift |
+| 46.500 | Engroshandel med IKT-utstyr |
 
 **Utvidede koder (aktiveres med `INKLUDER_UTVIDEDE_KODER = True`):**
 
 | Kode | Beskrivelse |
 |------|-------------|
-| 46.500 | Engroshandel med IKT-utstyr |
 | 62.100 | Dataprogrammeringstjenester |
 | 62.900 | Andre tjenester tilknyttet informasjonsteknologi |
 | 63.100 | Datainfrastruktur, -behandling, -lagring og tilknyttede tjenester |
